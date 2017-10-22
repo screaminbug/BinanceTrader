@@ -1,0 +1,32 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context="hr.from.tomislav_strelar.binancetrader.TradeFragment">
+
+    <RelativeLayout
+        android:id="@+id/fragment_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        tools:ignore="UselessParent">
+
+        <Button
+            android:id="@+id/stop_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerHorizontal="true"
+            android:text="@string/stop"
+            android:layout_marginTop="@dimen/nav_header_height"
+            android:textSize="17sp"/>
+
+        <TextView
+            android:id="@+id/output_stop_textview"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/stop_button"
+            android:layout_centerHorizontal="true"
+            android:textSize="16sp"/>
+
+    </RelativeLayout>
+
+</FrameLayout>
