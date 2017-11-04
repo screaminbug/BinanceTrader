@@ -9,7 +9,12 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.SimpleAdapter;
+import android.widget.Spinner;
+import android.widget.SpinnerAdapter;
 import android.widget.TextView;
 
 import com.github.mikephil.charting.charts.LineChart;
@@ -25,6 +30,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -35,12 +41,14 @@ import hr.from.tomislav_strelar.binancetrader.rest.BinanceApi;
 import hr.from.tomislav_strelar.binancetrader.rest.BinanceApiInterface;
 import hr.from.tomislav_strelar.binancetrader.rest.Symbol;
 import hr.from.tomislav_strelar.binancetrader.websocket.BinanceWebSocket;
-import retrofit2.adapter.rxjava.HttpException;
-import rx.Observable;
-import rx.Subscriber;
-import rx.Subscription;
-import rx.android.schedulers.AndroidSchedulers;
-import rx.schedulers.Schedulers;
+import io.reactivex.Observable;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.functions.Consumer;
+import io.reactivex.internal.observers.SubscriberCompletableObserver;
+import io.reactivex.internal.subscriptions.SubscriptionArbiter;
+import io.reactivex.schedulers.Schedulers;
+import retrofit2.HttpException;
 
 
 /**
@@ -51,7 +59,7 @@ import rx.schedulers.Schedulers;
  * Use the {@link MainDashboard#newInstance} factory method to
  * create an instance of this fragment.
  */
-public class MainDashboard extends Fragment {
+public class MainDashboard extends Fragment implements AdapterView.OnItemSelectedListener {
     // TODO: Rename parameter arguments, choose names that match
     // the fragment initialization parameters, e.g. ARG_ITEM_NUMBER
     private static final String ARG_PARAM1 = "param1";
@@ -63,49 +71,31 @@ public class MainDashboard extends Fragment {
     private String mParam1;
     private String mParam2;
 
+    private String selectedSymbol;
+
     private OnFragmentInteractionListener mListener;
 
     private View view;
-    private Button startButton;
-    private Button stopButton;
     private TextView outputTextView;
-    private List<BinanceWebSocket> webSocks = new ArrayList<>();
+    private Spinner pairSpinner;
+    private Map<String, BinanceWebSocket> webSocks = new HashMap<>();
+
+    ArrayAdapter<String> pairSpinnerAdapter;
 
     LineChart depthChart;
 
-    private BinanceApiInterface rest = BinanceApi.getInstance();
-    private Observable<List<Symbol>> symbolsObservable = rest.getAllSymbolPrices();
+    private CompositeDisposable mCompositeDisposable = new CompositeDisposable();
 
-    Subscription subscription = symbolsObservable
-            .subscribeOn(Schedulers.io())
-            .observeOn(AndroidSchedulers.mainThread())
-            .subscribe(new Subscriber<List<Symbol>>() {
+    private BinanceApiInterface rest;
 
-                @Override
-                public void onCompleted() {
-                    Log.i(LOG_TAG, "symbolsObservable complete");
-                }
-
-                @Override
-                public void onError(Throwable throwable) {
-                    if (throwable instanceof HttpException) {
-                        HttpException response = (HttpException)throwable;
-                        int code = response.code();
-                        Log.i(LOG_TAG, "Error in symbolsObservable: " + code + ": " + response.getLocalizedMessage());
-                    }
-                }
-
-                @Override
-                public void onNext(List<Symbol> symbols) {
-                    Log.i(LOG_TAG, symbols.toString());
-                }
-            } );
 
     public MainDashboard() {
         // Required empty public constructor
     }
 
-    private final class DepthChartUpdater extends DefaultAfterUpdateListener {
+
+
+    private final class DepthChartUpdater extends DefaultAfterUpdateListener  {
         @Override
         public void afterDepthUpdate(Depth depth) {
             chart(depth.getBids(), depth.getAsks());
@@ -139,18 +129,16 @@ public class MainDashboard extends Fragment {
             mParam1 = getArguments().getString(ARG_PARAM1);
             mParam2 = getArguments().getString(ARG_PARAM2);
         }
-        Depth depth = new Depth(new AllPrices.Symbol("ETHBTC"), new DepthChartUpdater());
 
-        webSocks.add(new BinanceWebSocket(depth));
 
     }
 
     @Override
-    public void onDestroy() {
-        super.onDestroy();
+    public void onStop() {
+        super.onStop();
 
-        subscription.unsubscribe();
     }
+
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -159,30 +147,44 @@ public class MainDashboard extends Fragment {
         Log.i(LOG_TAG,"Inflating Main Dashboard Fragment");
 
         View view = inflater.inflate(R.layout.fragment_main_dashboard, container, false);
-        Log.i(LOG_TAG,"Created Main Dashboard Fragment: " + startButton + " " + outputTextView);
 
-        startButton = (Button) view.findViewById(R.id.start_button);
-        stopButton = (Button) view.findViewById(R.id.stop_button);
-        outputTextView = (TextView) view.findViewById(R.id.output_start_textview);
-        depthChart = (LineChart) view.findViewById(R.id.depth_chart);
+        outputTextView = view.findViewById(R.id.output_start_textview);
+        depthChart = view.findViewById(R.id.depth_chart);
+        pairSpinner = view.findViewById(R.id.pair_spinner);
+        pairSpinnerAdapter = new ArrayAdapter<>(view.getContext(), R.layout.support_simple_spinner_dropdown_item);
+        pairSpinner.setAdapter(pairSpinnerAdapter);
+        pairSpinner.setOnItemSelectedListener(this);
+
 
         outputTextView.setText(mParam1);
 
+        rest = BinanceApi.getInstance();
 
-        startButton.setOnClickListener(v -> {
+        requestSymbols();
 
-            for (BinanceWebSocket sock : webSocks) {
-                sock.connect();
-            }
-        });
-
-        stopButton.setOnClickListener(v -> {
-            for (BinanceWebSocket sock : webSocks) {
-                sock.close();
-            }
-        });
 
         return view;
+    }
+
+    @Override
+    public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
+        if (selectedSymbol != null) {
+            webSocks.get(selectedSymbol).close();
+        }
+        selectedSymbol = (String) adapterView.getItemAtPosition(i);
+        if (!webSocks.containsKey(selectedSymbol)) {
+            Depth depth = new Depth(new AllPrices.Symbol(selectedSymbol), new DepthChartUpdater());
+            webSocks.put(selectedSymbol, new BinanceWebSocket(depth));
+        }
+        webSocks.get(selectedSymbol).connect();
+    }
+
+    @Override
+    public void onNothingSelected(AdapterView<?> adapterView) {
+        if (selectedSymbol != null) {
+            webSocks.get(selectedSymbol).close();
+        }
+        selectedSymbol = null;
     }
 
     public void output(final String txt) {
@@ -192,8 +194,8 @@ public class MainDashboard extends Fragment {
             saveLastMessage(txt);
             current.runOnUiThread(() -> outputTextView.setText(txt));
         } else {
-            for (BinanceWebSocket sock : webSocks) {
-                sock.close();
+            for (String sock : webSocks.keySet()) {
+                webSocks.get(sock).close();
             }
         }
     }
@@ -244,6 +246,19 @@ public class MainDashboard extends Fragment {
         }
     }
 
+    private void requestSymbols() {
+        mCompositeDisposable.add(rest.getAllSymbolPrices()
+                .subscribeOn(Schedulers.io()) // “work” on io thread
+                .observeOn(AndroidSchedulers.mainThread()) // “listen” on UIThread
+                .subscribe(symbols -> {
+                    for (Symbol sym : symbols) {
+                        pairSpinnerAdapter.add(sym.getSymbol());
+                    }
+                    pairSpinnerAdapter.notifyDataSetChanged();
+                })
+        );
+    }
+
 
     // TODO: Rename method, update argument and hook method into UI event
     public void saveLastMessage(String mess) {
@@ -264,7 +279,15 @@ public class MainDashboard extends Fragment {
     }
 
     @Override
+    public void onDestroy() {
+        // DO NOT CALL .dispose()
+        mCompositeDisposable.clear();
+        super.onDestroy();
+    }
+
+    @Override
     public void onDetach() {
+        if (selectedSymbol != null) { webSocks.get(selectedSymbol).close(); }
         super.onDetach();
         mListener = null;
     }

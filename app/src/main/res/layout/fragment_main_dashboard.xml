@@ -10,29 +10,13 @@
         android:layout_height="match_parent"
         tools:ignore="UselessParent">
 
-        <Button
-            android:id="@+id/start_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_centerHorizontal="true"
-            android:layout_marginTop="@dimen/nav_header_height"
-            android:text="@string/start"
-            android:textSize="17sp" />
-        <Button
-            android:id="@+id/stop_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_centerHorizontal="true"
-            android:layout_marginTop="@dimen/nav_header_height"
-            android:text="@string/stop_button_str"
-            android:layout_toRightOf="@+id/start_button"
-            android:textSize="17sp" />
+
 
         <com.github.mikephil.charting.charts.LineChart
             android:id="@+id/depth_chart"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_below="@+id/start_button"/>
+            android:layout_below="@+id/pair_spinner"/>
 
         <TextView
             android:id="@+id/output_start_textview"
@@ -41,6 +25,14 @@
             android:layout_below="@+id/depth_chart"
             android:layout_centerHorizontal="true"
             android:textSize="16sp" />
+
+        <Spinner
+            android:id="@+id/pair_spinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_alignParentTop="true"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="80dp" />
 
     </RelativeLayout>
 

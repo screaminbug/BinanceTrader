@@ -2,6 +2,8 @@ package hr.from.tomislav_strelar.binancetrader.data;
 
 import android.util.Log;
 
+import java.util.List;
+
 /**
  * Created by Tomislav on 15.10.2017..
  */
@@ -33,4 +35,5 @@ public class DefaultAfterUpdateListener implements AfterUpdateListener {
     public void afterTradeUpdate(Trade trade) {
         Log.i(TAG, "No after update implemented for Update");
     }
+
 }
