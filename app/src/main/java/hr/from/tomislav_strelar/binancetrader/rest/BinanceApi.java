@@ -4,6 +4,8 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
 import hr.from.tomislav_strelar.binancetrader.OkHttp;
+import hr.from.tomislav_strelar.binancetrader.rest.deserializers.OrdersMixedArray;
+import hr.from.tomislav_strelar.binancetrader.rest.deserializers.OrdersMixedArrayDeserializer;
 import retrofit2.Retrofit;
 
 import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory;
@@ -26,7 +28,9 @@ public class BinanceApi {
         rxAdapter = RxJava2CallAdapterFactory.create();
         gson = new GsonBuilder()
                 .setDateFormat("yyyy-MM-dd'T'HH:mm:ssZ")
+                .registerTypeAdapter(OrdersMixedArray.class, new OrdersMixedArrayDeserializer())
                 .create();
+
         retrofit = new Retrofit.Builder()
                 .client(OkHttp.client)
                 .baseUrl(BASE_URL)

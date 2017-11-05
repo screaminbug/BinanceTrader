@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Set;
@@ -17,6 +18,8 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
+import hr.from.tomislav_strelar.binancetrader.rest.OrderBook;
+import hr.from.tomislav_strelar.binancetrader.rest.deserializers.OrdersMixedArray;
 import hr.from.tomislav_strelar.binancetrader.websocket.WebsockCommand;
 
 /**
@@ -28,6 +31,8 @@ public class Depth extends BinanceData {
     private static final BigDecimal ZERO = new BigDecimal("0.00000000");
 
     private int updateId;
+    private boolean isInitialized = false;
+
     private Map<BigDecimal, BigDecimal> mBids = new TreeMap<>(Collections.reverseOrder());
     private Map<BigDecimal, BigDecimal> mAsks = new TreeMap<>();
 
@@ -36,15 +41,43 @@ public class Depth extends BinanceData {
 
     public Depth(AllPrices.Symbol symbol, AfterUpdateListener listener) { super(symbol, listener); }
 
-    public void update(JSONObject json) throws JSONException {
-        super.update(json);
-        if (!getSymbol().toString().equalsIgnoreCase(json.getString("s"))) {
-            throw new JSONException("Can't find correct symbol in response. Expected: " + getSymbol().toString() + " Got: " + json.getString("s"));
+    public void initWithOrderBook(OrderBook orderbook) {
+        synchronized (this) {
+            Log.i(TAG, "initWithOrderBook() starts");
+            for (OrdersMixedArray ask : orderbook.getAsks()) {
+                mCurrentAsks.put(
+                        new BigDecimal(ask.getPrice()),
+                        new BigDecimal(ask.getQuantity())
+                );
+            }
+
+            for (OrdersMixedArray bid : orderbook.getBids()) {
+                mCurrentBids.put(
+                        new BigDecimal(bid.getPrice()),
+                        new BigDecimal(bid.getQuantity())
+                );
+            }
+
+            isInitialized = true;
+            Log.i(TAG, "initWithOrderBook() ends");
         }
-        updateId = json.getInt("u");
-        updateBid(json.getJSONArray("b"));
-        updateAsk(json.getJSONArray("a"));
-        getAfterUpdateListener().afterDepthUpdate(this);
+    }
+
+    public void update(JSONObject json) throws JSONException {
+        synchronized (this) {
+            Log.i(TAG, "update() starts");
+            if (isInitialized) {
+                super.update(json);
+                if (!getSymbol().toString().equalsIgnoreCase(json.getString("s"))) {
+                    throw new JSONException("Can't find correct symbol in response. Expected: " + getSymbol().toString() + " Got: " + json.getString("s"));
+                }
+                updateId = json.getInt("u");
+                updateBid(json.getJSONArray("b"));
+                updateAsk(json.getJSONArray("a"));
+                getAfterUpdateListener().afterDepthUpdate(this);
+            }
+            Log.i(TAG, "update() ends");
+        }
     }
 
     public int getUpdateId() {

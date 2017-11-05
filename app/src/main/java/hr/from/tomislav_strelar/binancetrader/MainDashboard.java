@@ -23,10 +23,6 @@ import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.utils.EntryXComparator;
 
-import org.json.JSONException;
-import org.json.JSONObject;
-
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -41,14 +37,10 @@ import hr.from.tomislav_strelar.binancetrader.rest.BinanceApi;
 import hr.from.tomislav_strelar.binancetrader.rest.BinanceApiInterface;
 import hr.from.tomislav_strelar.binancetrader.rest.Symbol;
 import hr.from.tomislav_strelar.binancetrader.websocket.BinanceWebSocket;
-import io.reactivex.Observable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
-import io.reactivex.functions.Consumer;
-import io.reactivex.internal.observers.SubscriberCompletableObserver;
-import io.reactivex.internal.subscriptions.SubscriptionArbiter;
 import io.reactivex.schedulers.Schedulers;
-import retrofit2.HttpException;
+
 
 
 /**
@@ -71,14 +63,11 @@ public class MainDashboard extends Fragment implements AdapterView.OnItemSelecte
     private String mParam1;
     private String mParam2;
 
-    private String selectedSymbol;
-
     private OnFragmentInteractionListener mListener;
 
     private View view;
-    private TextView outputTextView;
     private Spinner pairSpinner;
-    private Map<String, BinanceWebSocket> webSocks = new HashMap<>();
+    private BinanceWebSocket webSock;
 
     ArrayAdapter<String> pairSpinnerAdapter;
 
@@ -129,14 +118,11 @@ public class MainDashboard extends Fragment implements AdapterView.OnItemSelecte
             mParam1 = getArguments().getString(ARG_PARAM1);
             mParam2 = getArguments().getString(ARG_PARAM2);
         }
-
-
     }
 
     @Override
     public void onStop() {
         super.onStop();
-
     }
 
 
@@ -148,56 +134,34 @@ public class MainDashboard extends Fragment implements AdapterView.OnItemSelecte
 
         View view = inflater.inflate(R.layout.fragment_main_dashboard, container, false);
 
-        outputTextView = view.findViewById(R.id.output_start_textview);
         depthChart = view.findViewById(R.id.depth_chart);
         pairSpinner = view.findViewById(R.id.pair_spinner);
         pairSpinnerAdapter = new ArrayAdapter<>(view.getContext(), R.layout.support_simple_spinner_dropdown_item);
         pairSpinner.setAdapter(pairSpinnerAdapter);
         pairSpinner.setOnItemSelectedListener(this);
 
-
-        outputTextView.setText(mParam1);
-
         rest = BinanceApi.getInstance();
 
         requestSymbols();
-
 
         return view;
     }
 
     @Override
     public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
-        if (selectedSymbol != null) {
-            webSocks.get(selectedSymbol).close();
-        }
-        selectedSymbol = (String) adapterView.getItemAtPosition(i);
-        if (!webSocks.containsKey(selectedSymbol)) {
-            Depth depth = new Depth(new AllPrices.Symbol(selectedSymbol), new DepthChartUpdater());
-            webSocks.put(selectedSymbol, new BinanceWebSocket(depth));
-        }
-        webSocks.get(selectedSymbol).connect();
+        String selectedSymbol = (String) adapterView.getItemAtPosition(i);
+
+        Depth depth = new Depth(new AllPrices.Symbol(selectedSymbol), new DepthChartUpdater());
+        requestHistoricalDepth(depth);
+
+        if (webSock != null) { webSock.close(); }
+        webSock = new BinanceWebSocket(depth);
+        webSock.connect();
     }
 
     @Override
     public void onNothingSelected(AdapterView<?> adapterView) {
-        if (selectedSymbol != null) {
-            webSocks.get(selectedSymbol).close();
-        }
-        selectedSymbol = null;
-    }
-
-    public void output(final String txt) {
-
-        Activity current = getActivity();
-        if (current != null) {
-            saveLastMessage(txt);
-            current.runOnUiThread(() -> outputTextView.setText(txt));
-        } else {
-            for (String sock : webSocks.keySet()) {
-                webSocks.get(sock).close();
-            }
-        }
+        if (webSock != null) { webSock.close(); webSock = null; }
     }
 
     public void chart(Map<BigDecimal, BigDecimal> bids, Map<BigDecimal, BigDecimal> asks) {
@@ -223,6 +187,7 @@ public class MainDashboard extends Fragment implements AdapterView.OnItemSelecte
             bidsDataSet.setValueTextColor(Color.BLACK);
             bidsDataSet.setDrawFilled(true);
             bidsDataSet.setFillColor(Color.GREEN);
+            bidsDataSet.setDrawCircles(false);
 
 
             LineDataSet asksDataSet = new LineDataSet(askEntries, "Asks"); // add entries to dataset
@@ -231,6 +196,7 @@ public class MainDashboard extends Fragment implements AdapterView.OnItemSelecte
             asksDataSet.setValueTextColor(Color.BLACK);
             asksDataSet.setDrawFilled(true);
             asksDataSet.setFillColor(Color.RED);
+            asksDataSet.setDrawCircles(false);
 
             final LineData linedata = new LineData();
             linedata.addDataSet(bidsDataSet);
@@ -259,6 +225,18 @@ public class MainDashboard extends Fragment implements AdapterView.OnItemSelecte
         );
     }
 
+    private void requestHistoricalDepth(Depth depth) {
+        String symbol = depth.getSymbol().toString().toUpperCase();
+        Log.i(LOG_TAG, "Requesting depth for " + symbol);
+        mCompositeDisposable.add(rest.getOrderBook(symbol)
+                .subscribeOn(Schedulers.io()) // “work” on io thread
+                .observeOn(Schedulers.io()) // “listen” on new thread
+                .subscribe(orderBook -> {
+                    depth.initWithOrderBook(orderBook);
+                })
+        );
+    }
+
 
     // TODO: Rename method, update argument and hook method into UI event
     public void saveLastMessage(String mess) {
@@ -281,13 +259,14 @@ public class MainDashboard extends Fragment implements AdapterView.OnItemSelecte
     @Override
     public void onDestroy() {
         // DO NOT CALL .dispose()
+        if (webSock != null) { webSock.close(); webSock = null; }
         mCompositeDisposable.clear();
         super.onDestroy();
     }
 
     @Override
     public void onDetach() {
-        if (selectedSymbol != null) { webSocks.get(selectedSymbol).close(); }
+        if (webSock != null) { webSock.close(); webSock = null; }
         super.onDetach();
         mListener = null;
     }

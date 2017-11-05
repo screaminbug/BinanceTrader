@@ -1,21 +1,26 @@
 
 package hr.from.tomislav_strelar.binancetrader.rest;
 
-import java.util.List;
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
 
+import java.util.List;
+
+import hr.from.tomislav_strelar.binancetrader.rest.deserializers.OrdersMixedArray;
+
 public class OrderBook {
+
+
 
     @SerializedName("lastUpdateId")
     @Expose
     private int lastUpdateId;
     @SerializedName("bids")
     @Expose
-    private List<List<String>> bids = null;
+    private List<OrdersMixedArray> bids = null;
     @SerializedName("asks")
     @Expose
-    private List<List<String>> asks = null;
+    private List<OrdersMixedArray> asks = null;
 
     public int getLastUpdateId() {
         return lastUpdateId;
@@ -25,19 +30,19 @@ public class OrderBook {
         this.lastUpdateId = lastUpdateId;
     }
 
-    public List<List<String>> getBids() {
+    public List<OrdersMixedArray> getBids() {
         return bids;
     }
 
-    public void setBids(List<List<String>> bids) {
+    public void setBids(List<OrdersMixedArray> bids) {
         this.bids = bids;
     }
 
-    public List<List<String>> getAsks() {
+    public List<OrdersMixedArray> getAsks() {
         return asks;
     }
 
-    public void setAsks(List<List<String>> asks) {
+    public void setAsks(List<OrdersMixedArray> asks) {
         this.asks = asks;
     }
 
