@@ -11,11 +11,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
-import android.widget.Button;
-import android.widget.SimpleAdapter;
 import android.widget.Spinner;
-import android.widget.SpinnerAdapter;
-import android.widget.TextView;
+import android.widget.Toast;
 
 import com.github.mikephil.charting.charts.LineChart;
 import com.github.mikephil.charting.data.Entry;
@@ -26,12 +23,11 @@ import com.github.mikephil.charting.utils.EntryXComparator;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+
 import hr.from.tomislav_strelar.binancetrader.data.AllPrices;
-import hr.from.tomislav_strelar.binancetrader.data.DefaultAfterUpdateListener;
 import hr.from.tomislav_strelar.binancetrader.data.Depth;
 import hr.from.tomislav_strelar.binancetrader.rest.BinanceApi;
 import hr.from.tomislav_strelar.binancetrader.rest.BinanceApiInterface;
@@ -40,6 +36,7 @@ import hr.from.tomislav_strelar.binancetrader.websocket.BinanceWebSocket;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.schedulers.Schedulers;
+import io.reactivex.Observable;
 
 
 
@@ -80,15 +77,6 @@ public class MainDashboard extends Fragment implements AdapterView.OnItemSelecte
 
     public MainDashboard() {
         // Required empty public constructor
-    }
-
-
-
-    private final class DepthChartUpdater extends DefaultAfterUpdateListener  {
-        @Override
-        public void afterDepthUpdate(Depth depth) {
-            chart(depth.getBids(), depth.getAsks());
-        }
     }
 
     /**
@@ -151,7 +139,10 @@ public class MainDashboard extends Fragment implements AdapterView.OnItemSelecte
     public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
         String selectedSymbol = (String) adapterView.getItemAtPosition(i);
 
-        Depth depth = new Depth(new AllPrices.Symbol(selectedSymbol), new DepthChartUpdater());
+        Depth depth = new Depth(new AllPrices.Symbol(selectedSymbol));
+
+        chartDepth(depth);
+
         requestHistoricalDepth(depth);
 
         if (webSock != null) { webSock.close(); }
@@ -164,52 +155,28 @@ public class MainDashboard extends Fragment implements AdapterView.OnItemSelecte
         if (webSock != null) { webSock.close(); webSock = null; }
     }
 
-    public void chart(Map<BigDecimal, BigDecimal> bids, Map<BigDecimal, BigDecimal> asks) {
-        List<Entry> bidEntries = new ArrayList<>();
-        for (BigDecimal price : bids.keySet()) {
-            BigDecimal amount = bids.get(price);
-            bidEntries.add(new Entry(price.floatValue(), amount.floatValue()));
-        }
+    private void makeErrorToast(String message) {
+        Toast toast = Toast.makeText(
+                getContext(),
+                message,
+                Toast.LENGTH_SHORT
+        );
+        toast.show();
+    }
 
-        List<Entry> askEntries = new ArrayList<>();
-        for (BigDecimal price : asks.keySet()) {
-            BigDecimal amount = asks.get(price);
-            askEntries.add(new Entry(price.floatValue(), amount.floatValue()));
-        }
-
-        if (bidEntries.size() > 0 && askEntries.size() > 0) {
-            Collections.sort(bidEntries, new EntryXComparator());
-            Collections.sort(askEntries, new EntryXComparator());
-
-            LineDataSet bidsDataSet = new LineDataSet(bidEntries, "Bids"); // add entries to dataset
-            Log.i(LOG_TAG, "Bids: " + bidEntries);
-            bidsDataSet.setColor(Color.GREEN);
-            bidsDataSet.setValueTextColor(Color.BLACK);
-            bidsDataSet.setDrawFilled(true);
-            bidsDataSet.setFillColor(Color.GREEN);
-            bidsDataSet.setDrawCircles(false);
-
-
-            LineDataSet asksDataSet = new LineDataSet(askEntries, "Asks"); // add entries to dataset
-            Log.i(LOG_TAG, "Asks: " + askEntries);
-            asksDataSet.setColor(Color.RED);
-            asksDataSet.setValueTextColor(Color.BLACK);
-            asksDataSet.setDrawFilled(true);
-            asksDataSet.setFillColor(Color.RED);
-            asksDataSet.setDrawCircles(false);
-
-            final LineData linedata = new LineData();
-            linedata.addDataSet(bidsDataSet);
-            linedata.addDataSet(asksDataSet);
-
-            Activity current = getActivity();
-            if (current != null) {
-                current.runOnUiThread(() -> {
-                    depthChart.invalidate();
-                    depthChart.setData(linedata);
-                });
-            }
-        }
+    private void chartDepth(Depth depth) {
+        mCompositeDisposable.add(depth.getObservable()
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(depthData -> {
+                            depthChart.invalidate();
+                            depthChart.setData(depthData.getLineData());
+                        }, error -> {
+                            String exMess = error.getLocalizedMessage();
+                            if (exMess != null) {
+                                makeErrorToast(exMess);
+                            }
+                        }));
     }
 
     private void requestSymbols() {
@@ -221,6 +188,8 @@ public class MainDashboard extends Fragment implements AdapterView.OnItemSelecte
                         pairSpinnerAdapter.add(sym.getSymbol());
                     }
                     pairSpinnerAdapter.notifyDataSetChanged();
+                }, error -> {
+                    makeErrorToast(error.getMessage());
                 })
         );
     }
@@ -233,6 +202,10 @@ public class MainDashboard extends Fragment implements AdapterView.OnItemSelecte
                 .observeOn(Schedulers.io()) // “listen” on new thread
                 .subscribe(orderBook -> {
                     depth.initWithOrderBook(orderBook);
+                }, error -> {
+                    getActivity().runOnUiThread(() -> {
+                        makeErrorToast(error.getMessage());
+                    });
                 })
         );
     }

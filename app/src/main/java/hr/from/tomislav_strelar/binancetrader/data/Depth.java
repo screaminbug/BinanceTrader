@@ -2,11 +2,14 @@ package hr.from.tomislav_strelar.binancetrader.data;
 
 import android.util.Log;
 
+import com.github.mikephil.charting.data.LineData;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.math.BigDecimal;
+import java.security.InvalidParameterException;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Iterator;
@@ -20,13 +23,14 @@ import java.util.TreeSet;
 
 import hr.from.tomislav_strelar.binancetrader.rest.OrderBook;
 import hr.from.tomislav_strelar.binancetrader.rest.deserializers.OrdersMixedArray;
+import hr.from.tomislav_strelar.binancetrader.ui.DepthChart;
 import hr.from.tomislav_strelar.binancetrader.websocket.WebsockCommand;
 
 /**
  * Created by Tomislav on 7.10.2017..
  */
 
-public class Depth extends BinanceData {
+public class Depth extends BinanceData<Depth> {
     private static final String TAG = "Depth";
     private static final BigDecimal ZERO = new BigDecimal("0.00000000");
 
@@ -39,7 +43,9 @@ public class Depth extends BinanceData {
     private Map<BigDecimal, BigDecimal> mCurrentBids = new TreeMap<>(Collections.reverseOrder());
     private Map<BigDecimal, BigDecimal> mCurrentAsks = new TreeMap<>();
 
-    public Depth(AllPrices.Symbol symbol, AfterUpdateListener listener) { super(symbol, listener); }
+    private DepthChart depthChart = new DepthChart();
+
+    public Depth(AllPrices.Symbol symbol) { super(symbol); }
 
     public void initWithOrderBook(OrderBook orderbook) {
         synchronized (this) {
@@ -58,23 +64,42 @@ public class Depth extends BinanceData {
                 );
             }
 
+            updateCumul(mCurrentBids, mBids);
+            updateCumul(mCurrentAsks, mAsks);
             isInitialized = true;
+
+            emitUpdate();
+
             Log.i(TAG, "initWithOrderBook() ends");
         }
     }
 
-    public void update(JSONObject json) throws JSONException {
+    public void update(JSONObject json) {
         synchronized (this) {
             Log.i(TAG, "update() starts");
             if (isInitialized) {
-                super.update(json);
-                if (!getSymbol().toString().equalsIgnoreCase(json.getString("s"))) {
-                    throw new JSONException("Can't find correct symbol in response. Expected: " + getSymbol().toString() + " Got: " + json.getString("s"));
+                try {
+                    super.update(json);
+                    if (getSymbol().toString().equalsIgnoreCase(json.getString("s"))) {
+                        updateId = json.getInt("u");
+                        updateBid(json.getJSONArray("b"));
+                        updateAsk(json.getJSONArray("a"));
+
+                        emitUpdate();
+
+                    } else {
+                        onError(
+                                new InvalidParameterException(
+                                        "Can't find correct symbol in response. Expected: "
+                                                + getSymbol().toString() + " Got: "
+                                                + json.getString("s")
+                                )
+                        );
+                    }
+                } catch (JSONException jsonEx) {
+                    onError(jsonEx);
                 }
-                updateId = json.getInt("u");
-                updateBid(json.getJSONArray("b"));
-                updateAsk(json.getJSONArray("a"));
-                getAfterUpdateListener().afterDepthUpdate(this);
+
             }
             Log.i(TAG, "update() ends");
         }
@@ -82,6 +107,10 @@ public class Depth extends BinanceData {
 
     public int getUpdateId() {
         return updateId;
+    }
+
+    public LineData getLineData() {
+        return depthChart.getLineData();
     }
 
     public WebsockCommand getWebSockCommand() { return WebsockCommand.DEPTH; }
@@ -92,6 +121,11 @@ public class Depth extends BinanceData {
 
     public Map<BigDecimal, BigDecimal> getAsks() {
         return mAsks;
+    }
+
+    private void emitUpdate() {
+        depthChart.updateLineData(mBids, mAsks);
+        onUpdate(this);
     }
 
     private void updateDepth(JSONArray data, Map<BigDecimal, BigDecimal> current, Map<BigDecimal, BigDecimal> cumul) throws JSONException{
@@ -128,6 +162,7 @@ public class Depth extends BinanceData {
     private void updateBid(JSONArray bids) throws JSONException {
         updateDepth(bids, mCurrentBids, mBids);
     }
+
 
     @Override
     public String toString() {

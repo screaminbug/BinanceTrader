@@ -100,6 +100,7 @@ public class BinanceWebSocket {
         public void onClosed(WebSocket webSocket, int code, String reason) {
             ws = null;
             Log.i(LOG_TAG, "Socket closed: " + code + " / " + reason);
+            data.onComplete();
         }
 
         @Override
@@ -107,6 +108,9 @@ public class BinanceWebSocket {
             ws = null;
             if (!(t instanceof java.io.EOFException)) {
                 Log.e(LOG_TAG, "Error: " + response, t);
+            }
+            if (t != null) {
+                data.onError(t);
             }
         }
     }

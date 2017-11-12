@@ -18,38 +18,33 @@ import hr.from.tomislav_strelar.binancetrader.websocket.WebsockCommand;
  * Created by Tomislav on 15.10.2017..
  */
 
-public abstract class BinanceData {
+public abstract class BinanceData<T> extends DataObservable<T> {
     private static final String TAG = "BinanceData";
 
     private Date eventTime;
     private AllPrices.Symbol symbol;
     private String listenKey;
-    private AfterUpdateListener afterUpdateListener;
 
-    public BinanceData(AllPrices.Symbol symbol, AfterUpdateListener afterUpdateListener) {
-        this(symbol, null, afterUpdateListener);
+
+    public BinanceData(AllPrices.Symbol symbol) {
+        this(symbol, null);
 
     }
 
-    public BinanceData(String listenKey, AfterUpdateListener afterUpdateListener) {
-        this(new AllPrices.Symbol(""), listenKey, afterUpdateListener);
+    public BinanceData(String listenKey) {
+        this(new AllPrices.Symbol(""), listenKey);
     }
 
-    private BinanceData(AllPrices.Symbol symbol, String listenKey, AfterUpdateListener afterUpdateListener) {
+    private BinanceData(AllPrices.Symbol symbol, String listenKey) {
         if (symbol == null) throw new InvalidParameterException("Symbol can't be null");
         this.symbol = symbol;
         this.listenKey = listenKey;
-        setAfterUpdateListener(afterUpdateListener);
     }
 
     public void update(JSONObject json) throws JSONException {
         eventTime = new Date(json.getInt("E"));
     }
 
-    public void setAfterUpdateListener(AfterUpdateListener listener) {
-        if (listener == null) { afterUpdateListener = new DefaultAfterUpdateListener(); }
-        else { afterUpdateListener = listener; }
-    }
 
     public Date getEventTime() { return eventTime; }
 
@@ -60,13 +55,6 @@ public abstract class BinanceData {
     public abstract int getUpdateId();
 
     public abstract WebsockCommand getWebSockCommand();
-
-    //public abstract RestCommand getRestCommand();
-
-    protected AfterUpdateListener getAfterUpdateListener() {
-        return afterUpdateListener;
-    }
-
 
 
 }
